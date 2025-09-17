@@ -100,7 +100,7 @@ curl http://localhost:8000/models
 
 ## Configuration
 
-Configure the server using environment variables:
+Configure the server using environment variables (set in a `.env` file or directly in the environment):
 
 | Variable             | Description                    | Default   |
 | -------------------- | ------------------------------ | --------- |
@@ -112,3 +112,13 @@ Configure the server using environment variables:
 | `BERT_HOST`          | Server host                    | `0.0.0.0` |
 | `BERT_PORT`          | Server port                    | `8000`    |
 | `BERT_LOG_LEVEL`     | Logging level                  | `INFO`    |
+
+### Device Selection
+
+To use a specific device, set the `BERT_DEVICE` variable like so:
+
+```bash
+BERT_DEVICE="cpu" # CPU-only
+BERT_DEVICE="auto" # Automatically select GPUs if available
+BERT_DEVICE="cuda:3"  # Use GPU #3
+```
