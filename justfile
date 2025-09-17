@@ -59,5 +59,5 @@ test FILE="":
 # ============================================================================
 
 # Run the server
-run CONFIG:
+run:
     uv run python -m app.main
