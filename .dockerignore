@@ -1,0 +1,17 @@
+# Project directories
+models/
+
+# Python
+__pycache__/
+*.pyc
+
+# Node.js
+node_modules/
+
+# Miscellaneous
+.DS_Store
+.env
+.venv/
+.vscode/
+.idea/
+.git/

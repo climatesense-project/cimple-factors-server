@@ -1,0 +1,28 @@
+services:
+  cimple-factors:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: cimple-factors-server:latest
+    ports:
+      - "${PORT:-8000}:8000"
+    environment:
+      - BERT_HOST=${BERT_HOST:-0.0.0.0}
+      - BERT_PORT=${BERT_PORT:-8000}
+      - BERT_MODELS_PATH=${BERT_MODELS_PATH:-/app/models}
+      - BERT_WORKERS=${BERT_WORKERS:-1}
+      - BERT_DEVICE=${BERT_DEVICE:-auto}
+      - BERT_AUTO_DOWNLOAD=${BERT_AUTO_DOWNLOAD:-true}
+      - BERT_BATCH_SIZE=${BERT_BATCH_SIZE:-32}
+      - BERT_MAX_LENGTH=${BERT_MAX_LENGTH:-128}
+      - BERT_LOG_LEVEL=${BERT_LOG_LEVEL:-INFO}
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ${MODELS_PATH:-./models}:/app/models
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+      start_period: 120s
