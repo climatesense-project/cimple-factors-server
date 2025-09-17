@@ -208,10 +208,9 @@ class BertFactorsPredictor:
                 emotion_path = self.models_path / "emotion.pth"
                 if emotion_path.exists():
                     model_em.load_state_dict(
-                        torch.load(
+                        torch.load(  # nosec: B614: torch 1.12 doesn't support weights_only
                             emotion_path,
                             map_location=self.torch_device,
-                            weights_only=True,
                         )
                     )
                     model_em.eval()
@@ -231,10 +230,9 @@ class BertFactorsPredictor:
                 political_path = self.models_path / "political-leaning.pth"
                 if political_path.exists():
                     model_pol.load_state_dict(
-                        torch.load(
+                        torch.load(  # nosec: B614: torch 1.12 doesn't support weights_only
                             political_path,
                             map_location=self.torch_device,
-                            weights_only=True,
                         )
                     )
                     model_pol.eval()
@@ -256,10 +254,9 @@ class BertFactorsPredictor:
                 sentiment_path = self.models_path / "sentiment.pth"
                 if sentiment_path.exists():
                     model_sent.load_state_dict(
-                        torch.load(
+                        torch.load(  # nosec: B614: torch 1.12 doesn't support weights_only
                             sentiment_path,
                             map_location=self.torch_device,
-                            weights_only=True,
                         )
                     )
                     model_sent.eval()
@@ -279,10 +276,9 @@ class BertFactorsPredictor:
                 conspiracy_path = self.models_path / "conspiracy.pth"
                 if conspiracy_path.exists():
                     model_con.load_state_dict(
-                        torch.load(
+                        torch.load(  # nosec: B614: torch 1.12 doesn't support weights_only
                             conspiracy_path,
                             map_location=self.torch_device,
-                            weights_only=True,
                         )
                     )
                     model_con.eval()
