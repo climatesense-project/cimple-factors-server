@@ -1,3 +1,3 @@
-"""BERT Factors API Server."""
+"""CIMPLE Factors API Server."""
 
 __version__ = "1.0.0"

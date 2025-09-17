@@ -1,4 +1,4 @@
-"""FastAPI application for BERT factors prediction."""
+"""FastAPI application for CIMPLE factors prediction."""
 
 from contextlib import asynccontextmanager
 import logging
@@ -37,7 +37,7 @@ async def lifespan(app: FastAPI):
     """Manage application lifespan."""
     global predictor
 
-    logger.info("Starting BERT factors server...")
+    logger.info("Starting server...")
     logger.info(f"Models path: {settings.models_path}")
     logger.info(f"Device: {settings.device}")
     logger.info(f"Batch size: {settings.batch_size}")
@@ -65,11 +65,11 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    logger.info("Shutting down BERT factors server...")
+    logger.info("Shutting down server...")
 
 
 app = FastAPI(
-    title="BERT Factors API",
+    title="CIMPLE Factors API",
     description="API for predicting emotion, sentiment, political leaning, and conspiracy factors using BERT models",
     version="1.0.0",
     lifespan=lifespan,
@@ -96,7 +96,7 @@ def _convert_to_factor_result(result: dict[str, Any] | None) -> FactorResult | N
 @app.get("/", response_model=dict[str, str])
 async def root():
     """Root endpoint."""
-    return {"message": "BERT Factors API", "docs": "/docs"}
+    return {"message": "CIMPLE Factors API", "docs": "/docs"}
 
 
 @app.get("/health", response_model=HealthResponse)

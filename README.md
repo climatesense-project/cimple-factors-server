@@ -1,4 +1,4 @@
-# BERT Factors Server
+# CIMPLE Factors Server
 
 A standalone HTTP API server for predicting emotion, sentiment, political leaning, and conspiracy factors using BERT models.
 

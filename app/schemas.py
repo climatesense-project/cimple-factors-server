@@ -1,4 +1,4 @@
-"""Pydantic schemas for the BERT factors API."""
+"""Pydantic schemas for the CIMPLE factors API."""
 
 from pydantic import BaseModel, Field
 

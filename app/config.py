@@ -1,4 +1,4 @@
-"""Configuration for the BERT factors server."""
+"""Configuration for the CIMPLE factors server."""
 
 import os
 from pathlib import Path

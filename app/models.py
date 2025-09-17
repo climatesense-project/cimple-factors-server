@@ -475,5 +475,5 @@ class BertFactorsPredictor:
             return final_results
 
         except Exception as e:
-            logger.error(f"Error in BERT factors prediction: {e}")
+            logger.error(f"Error in CIMPLE factors prediction: {e}")
             return [None] * len(texts)
