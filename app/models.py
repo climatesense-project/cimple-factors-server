@@ -75,7 +75,7 @@ class BertFactorsPredictor:
     CONSPIRACY_LEVELS_LIST = ["No ", "Mentioning ", "Supporting "]
 
     # Model download configuration
-    MODELS_BASE_URL = "https://data.cimple.eu/models"
+    MODELS_BASE_URL = "https://data.climatesense-project.eu/models"
     REQUIRED_MODELS = [
         "emotion.pth",
         "sentiment.pth",
