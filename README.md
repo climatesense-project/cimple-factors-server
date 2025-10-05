@@ -1,6 +1,6 @@
 # CIMPLE Factors Server
 
-A standalone HTTP API server for predicting emotion, sentiment, political leaning, narrative tropes, and conspiracy factors using BERT models.
+A standalone HTTP API server for predicting emotion, sentiment, political leaning, narrative tropes, conspiracy factors, and persuasion techniques using BERT models.
 
 ## 📋 Prerequisites
 
@@ -67,6 +67,7 @@ curl -X POST "http://localhost:8000/predict" \
       "sentiment": "Negative",
       "political_leaning": "Left",
       "tropes": ["Hidden Motives"],
+      "persuasion_techniques": ["Reasoning", "Repetition"],
       "conspiracies": {
         "mentioned": [],
         "promoted": []
@@ -77,6 +78,7 @@ curl -X POST "http://localhost:8000/predict" \
       "sentiment": "Negative",
       "political_leaning": "Right",
       "tropes": ["Time Will Tell", "Distrust Experts"],
+      "persuasion_techniques": ["Appeal to authority"],
       "conspiracies": {
         "mentioned": ["Antivax"],
         "promoted": []
@@ -114,6 +116,15 @@ Configure the server using environment variables (set in a `.env` file or direct
 | `BERT_HOST`          | Server host                    | `0.0.0.0` |
 | `BERT_PORT`          | Server port                    | `8000`    |
 | `BERT_LOG_LEVEL`     | Logging level                  | `INFO`    |
+
+The server expects the following model checkpoints under `BERT_MODELS_PATH` (downloading automatically when `BERT_AUTO_DOWNLOAD=true`):
+
+- `emotion.pth`
+- `sentiment.pth`
+- `political-leaning.pth`
+- `conspiracy.pth`
+- `tropes.pth`
+- `persuasion-techniques.pth`
 
 ### Device Selection
 

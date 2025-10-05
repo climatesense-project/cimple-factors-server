@@ -37,6 +37,9 @@ class FactorResult(BaseModel):
     tropes: list[str] = Field(
         default_factory=list, description="Detected narrative tropes"
     )
+    persuasion_techniques: list[str] = Field(
+        default_factory=list, description="Detected persuasion techniques"
+    )
     conspiracies: ConspiracyResult = Field(
         default_factory=ConspiracyResult, description="Conspiracy predictions"
     )
@@ -79,6 +82,9 @@ class ModelsInfoResponse(BaseModel):
     conspiracies: list[str] = Field(..., description="List of conspiracy theories")
     conspiracy_levels: list[str] = Field(..., description="List of conspiracy levels")
     tropes: list[str] = Field(..., description="List of narrative tropes")
+    persuasion_techniques: list[str] = Field(
+        ..., description="List of persuasion techniques"
+    )
 
 
 class ErrorResponse(BaseModel):

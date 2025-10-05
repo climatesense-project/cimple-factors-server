@@ -22,6 +22,7 @@ import torch.nn as nn  # noqa: E402
 from transformers import (  # noqa: E402
     AutoTokenizer,
     BertForPreTraining,
+    BertForSequenceClassification,
 )
 
 logger = logging.getLogger(__name__)
@@ -54,8 +55,35 @@ class CovidTwitterBertClassifier(nn.Module):
         return logits
 
 
+class PersuasionBertClassifier(nn.Module):
+    """BERT classifier for persuasion techniques."""
+
+    def __init__(self, n_labels: int, pretrained_model: str = ""):
+        super().__init__()
+        self.n_labels = n_labels
+        self.bert = BertForSequenceClassification.from_pretrained(  # ty: ignore[possibly-unbound-attribute]
+            "google-bert/bert-base-uncased",
+            revision="86b5e0934494bd15c9632b12f734a8a67f723594",
+            num_labels=n_labels * 2,
+        )
+
+    def forward(
+        self,
+        input_ids: torch.Tensor,
+        token_type_ids: torch.Tensor,
+        input_mask: torch.Tensor,
+    ) -> torch.Tensor:
+        outputs = self.bert(
+            input_ids=input_ids,
+            token_type_ids=token_type_ids,
+            attention_mask=input_mask,
+        )
+        logits: torch.Tensor = outputs.logits
+        return logits
+
+
 class BertFactorsPredictor:
-    """BERT-based factors predictor for emotion, sentiment, political leaning, tropes, and conspiracy detection."""
+    """BERT-based factors predictor for emotion, sentiment, political leaning, tropes, conspiracies, and persuasion techniques."""
 
     # Constants for factor categories
     EMOTIONS_LIST = ["None", "Happiness", "Anger", "Sadness", "Fear"]
@@ -71,6 +99,36 @@ class BertFactorsPredictor:
         "Scapegoat",
         "Defend the Weak",
         "Wicked Fairness",
+    ]
+    PERSUASION_TECHNIQUES_LIST = [
+        "Repetition",
+        "Obfuscation, Intentional vagueness, Confusion",
+        "Slogans",
+        "Bandwagon",
+        "Appeal to authority",
+        "Flag-waving",
+        "Appeal to fear/prejudice",
+        "Causal Oversimplification",
+        "Black-and-white Fallacy/Dictatorship",
+        "Thought-terminating cliché",
+        "Misrepresentation of Someone's Position (Straw Man)",
+        "Presenting Irrelevant Data (Red Herring)",
+        "Whataboutism",
+        "Glittering generalities (Virtue)",
+        "Doubt",
+        "Name calling/Labeling",
+        "Smears",
+        "Reductio ad hitlerum",
+        "Exaggeration/Minimisation",
+        "Loaded Language",
+        "Logos",
+        "Reasoning",
+        "Justification",
+        "Simplification",
+        "Distraction",
+        "Ethos",
+        "Ad Hominem",
+        "Pathos",
     ]
     CONSPIRACIES_LIST = [
         "Suppressed Cures",
@@ -93,6 +151,7 @@ class BertFactorsPredictor:
         "political-leaning.pth",
         "conspiracy.pth",
         "tropes.pth",
+        "persuasion-techniques.pth",
     ]
 
     def __init__(
@@ -112,11 +171,12 @@ class BertFactorsPredictor:
         self.tokenizer: AutoTokenizer | None = None
         self.models: (
             tuple[
-                CovidTwitterBertClassifier | None,
-                CovidTwitterBertClassifier | None,
-                CovidTwitterBertClassifier | None,
-                CovidTwitterBertClassifier | None,
-                CovidTwitterBertClassifier | None,
+                CovidTwitterBertClassifier | None,  # emotion
+                CovidTwitterBertClassifier | None,  # political leaning
+                CovidTwitterBertClassifier | None,  # sentiment
+                CovidTwitterBertClassifier | None,  # conspiracy
+                CovidTwitterBertClassifier | None,  # tropes
+                PersuasionBertClassifier | None,  # persuasion techniques
             ]
             | None
         ) = None
@@ -324,7 +384,38 @@ class BertFactorsPredictor:
                 logger.warning(f"Failed to load tropes model: {e}")
                 model_tropes = None
 
-            self.models = (model_em, model_pol, model_sent, model_con, model_tropes)
+            # Persuasion techniques model (multi-label: two logits per technique)
+            model_persuasion: PersuasionBertClassifier | None = None
+            try:
+                model_persuasion = PersuasionBertClassifier(
+                    len(self.PERSUASION_TECHNIQUES_LIST)
+                ).to(self.torch_device)
+                persuasion_path = self.models_path / "persuasion-techniques.pth"
+                if persuasion_path.exists():
+                    model_persuasion.load_state_dict(
+                        torch.load(  # nosec: B614: torch 1.12 doesn't support weights_only
+                            persuasion_path,
+                            map_location=self.torch_device,
+                        )
+                    )
+                    model_persuasion.eval()
+                else:
+                    logger.warning(
+                        f"Persuasion techniques model not found at {persuasion_path}"
+                    )
+                    model_persuasion = None
+            except Exception as e:
+                logger.warning(f"Failed to load persuasion techniques model: {e}")
+                model_persuasion = None
+
+            self.models = (
+                model_em,
+                model_pol,
+                model_sent,
+                model_con,
+                model_tropes,
+                model_persuasion,
+            )
 
         except Exception as e:
             logger.error(f"Error loading BERT models: {e}")
@@ -381,7 +472,14 @@ class BertFactorsPredictor:
             if not valid_texts:
                 return [None] * len(texts)
 
-            model_em, model_pol, model_sent, model_con, model_tropes = self.models
+            (
+                model_em,
+                model_pol,
+                model_sent,
+                model_con,
+                model_tropes,
+                model_persuasion,
+            ) = self.models
 
             # Initialize result lists
             all_predictions_em = []
@@ -389,6 +487,7 @@ class BertFactorsPredictor:
             all_predictions_sent = []
             all_predictions_con = []
             all_predictions_tropes: list[list[int]] = []
+            all_predictions_persuasion: list[list[int]] = []
 
             # Process texts in batches
             num_batches = (len(valid_texts) + self.batch_size - 1) // self.batch_size
@@ -474,6 +573,21 @@ class BertFactorsPredictor:
                         predictions_tropes = logits_tropes.argmax(dim=2).tolist()
                         all_predictions_tropes.extend(predictions_tropes)
 
+                    if model_persuasion:
+                        logits_persuasion_batch = model_persuasion(
+                            input_ids, token_type_ids, attention_mask
+                        )
+                        num_techniques = len(self.PERSUASION_TECHNIQUES_LIST)
+                        logits_persuasion = (
+                            logits_persuasion_batch.detach()
+                            .cpu()
+                            .view(-1, num_techniques, 2)
+                        )
+                        predictions_persuasion = logits_persuasion.argmax(
+                            dim=2
+                        ).tolist()
+                        all_predictions_persuasion.extend(predictions_persuasion)
+
             # Process results for each valid text
             batch_results: list[dict[str, Any]] = []
             for i in range(len(valid_texts)):
@@ -518,6 +632,19 @@ class BertFactorsPredictor:
                         if is_present == 1
                     ]
                     results["tropes"] = detected_tropes
+
+                if all_predictions_persuasion:
+                    technique_flags = all_predictions_persuasion[i]
+                    detected_techniques = [
+                        technique
+                        for technique, is_present in zip(
+                            self.PERSUASION_TECHNIQUES_LIST,
+                            technique_flags,
+                            strict=False,
+                        )
+                        if is_present == 1
+                    ]
+                    results["persuasion_techniques"] = detected_techniques
 
                 batch_results.append(results)
 

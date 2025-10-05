@@ -90,6 +90,7 @@ def _convert_to_factor_result(result: dict[str, Any] | None) -> FactorResult | N
         sentiment=result.get("sentiment"),
         political_leaning=result.get("political_leaning"),
         tropes=result.get("tropes", []),
+        persuasion_techniques=result.get("persuasion_techniques", []),
         conspiracies=ConspiracyResult(
             mentioned=conspiracies.get("mentioned", []),
             promoted=conspiracies.get("promoted", []),
@@ -206,6 +207,7 @@ async def models_info():
         conspiracies=predictor.CONSPIRACIES_LIST,
         conspiracy_levels=predictor.CONSPIRACY_LEVELS_LIST,
         tropes=predictor.TROPES_LIST,
+        persuasion_techniques=predictor.PERSUASION_TECHNIQUES_LIST,
     )
 
 
