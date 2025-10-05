@@ -55,12 +55,23 @@ class CovidTwitterBertClassifier(nn.Module):
 
 
 class BertFactorsPredictor:
-    """BERT-based factors predictor for emotion, sentiment, political leaning, and conspiracy detection."""
+    """BERT-based factors predictor for emotion, sentiment, political leaning, tropes, and conspiracy detection."""
 
     # Constants for factor categories
     EMOTIONS_LIST = ["None", "Happiness", "Anger", "Sadness", "Fear"]
     POLITICAL_BIAS_LIST = ["Left", "Other", "Right"]
     SENTIMENTS_LIST = ["Negative", "Neutral", "Positive"]
+    TROPES_LIST = [
+        "Time Will Tell",
+        "Distrust Experts",
+        "Too Fast",
+        "Natural is Better",
+        "Liberty, Freedom",
+        "Hidden Motives",
+        "Scapegoat",
+        "Defend the Weak",
+        "Wicked Fairness",
+    ]
     CONSPIRACIES_LIST = [
         "Suppressed Cures",
         "Behaviour and mind Control",
@@ -81,6 +92,7 @@ class BertFactorsPredictor:
         "sentiment.pth",
         "political-leaning.pth",
         "conspiracy.pth",
+        "tropes.pth",
     ]
 
     def __init__(
@@ -100,6 +112,7 @@ class BertFactorsPredictor:
         self.tokenizer: AutoTokenizer | None = None
         self.models: (
             tuple[
+                CovidTwitterBertClassifier | None,
                 CovidTwitterBertClassifier | None,
                 CovidTwitterBertClassifier | None,
                 CovidTwitterBertClassifier | None,
@@ -289,7 +302,29 @@ class BertFactorsPredictor:
                 logger.warning(f"Failed to load conspiracy model: {e}")
                 model_con = None
 
-            self.models = (model_em, model_pol, model_sent, model_con)
+            # Tropes model (multi-label: two logits per trope)
+            model_tropes: CovidTwitterBertClassifier | None = None
+            try:
+                model_tropes = CovidTwitterBertClassifier(len(self.TROPES_LIST) * 2).to(
+                    self.torch_device
+                )
+                tropes_path = self.models_path / "tropes.pth"
+                if tropes_path.exists():
+                    model_tropes.load_state_dict(
+                        torch.load(  # nosec: B614: torch 1.12 doesn't support weights_only
+                            tropes_path,
+                            map_location=self.torch_device,
+                        )
+                    )
+                    model_tropes.eval()
+                else:
+                    logger.warning(f"Tropes model not found at {tropes_path}")
+                    model_tropes = None
+            except Exception as e:
+                logger.warning(f"Failed to load tropes model: {e}")
+                model_tropes = None
+
+            self.models = (model_em, model_pol, model_sent, model_con, model_tropes)
 
         except Exception as e:
             logger.error(f"Error loading BERT models: {e}")
@@ -346,13 +381,14 @@ class BertFactorsPredictor:
             if not valid_texts:
                 return [None] * len(texts)
 
-            model_em, model_pol, model_sent, model_con = self.models
+            model_em, model_pol, model_sent, model_con, model_tropes = self.models
 
             # Initialize result lists
             all_predictions_em = []
             all_predictions_pol = []
             all_predictions_sent = []
             all_predictions_con = []
+            all_predictions_tropes: list[list[int]] = []
 
             # Process texts in batches
             num_batches = (len(valid_texts) + self.batch_size - 1) // self.batch_size
@@ -427,6 +463,17 @@ class BertFactorsPredictor:
                         predictions_con = predictions_con_reshaped.argmax(axis=2)
                         all_predictions_con.extend(predictions_con)
 
+                    if model_tropes:
+                        logits_tropes_batch = model_tropes(
+                            input_ids, token_type_ids, attention_mask
+                        )
+                        num_tropes = len(self.TROPES_LIST)
+                        logits_tropes = (
+                            logits_tropes_batch.detach().cpu().view(-1, num_tropes, 2)
+                        )
+                        predictions_tropes = logits_tropes.argmax(dim=2).tolist()
+                        all_predictions_tropes.extend(predictions_tropes)
+
             # Process results for each valid text
             batch_results: list[dict[str, Any]] = []
             for i in range(len(valid_texts)):
@@ -460,6 +507,17 @@ class BertFactorsPredictor:
                         "mentioned": mentioned,
                         "promoted": promoted,
                     }
+
+                if all_predictions_tropes:
+                    tropes_flags = all_predictions_tropes[i]
+                    detected_tropes = [
+                        trope
+                        for trope, is_present in zip(
+                            self.TROPES_LIST, tropes_flags, strict=False
+                        )
+                        if is_present == 1
+                    ]
+                    results["tropes"] = detected_tropes
 
                 batch_results.append(results)
 

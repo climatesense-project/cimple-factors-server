@@ -70,7 +70,10 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="CIMPLE Factors API",
-    description="API for predicting emotion, sentiment, political leaning, and conspiracy factors using BERT models",
+    description=(
+        "API for predicting emotion, sentiment, political leaning, tropes, and "
+        "conspiracy factors using BERT models"
+    ),
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -86,6 +89,7 @@ def _convert_to_factor_result(result: dict[str, Any] | None) -> FactorResult | N
         emotion=result.get("emotion"),
         sentiment=result.get("sentiment"),
         political_leaning=result.get("political_leaning"),
+        tropes=result.get("tropes", []),
         conspiracies=ConspiracyResult(
             mentioned=conspiracies.get("mentioned", []),
             promoted=conspiracies.get("promoted", []),
@@ -201,6 +205,7 @@ async def models_info():
         political_bias=predictor.POLITICAL_BIAS_LIST,
         conspiracies=predictor.CONSPIRACIES_LIST,
         conspiracy_levels=predictor.CONSPIRACY_LEVELS_LIST,
+        tropes=predictor.TROPES_LIST,
     )
 
 

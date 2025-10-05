@@ -1,6 +1,6 @@
 # CIMPLE Factors Server
 
-A standalone HTTP API server for predicting emotion, sentiment, political leaning, and conspiracy factors using BERT models.
+A standalone HTTP API server for predicting emotion, sentiment, political leaning, narrative tropes, and conspiracy factors using BERT models.
 
 ## 📋 Prerequisites
 
@@ -66,6 +66,7 @@ curl -X POST "http://localhost:8000/predict" \
       "emotion": "Fear",
       "sentiment": "Negative",
       "political_leaning": "Left",
+      "tropes": ["Hidden Motives"],
       "conspiracies": {
         "mentioned": [],
         "promoted": []
@@ -75,6 +76,7 @@ curl -X POST "http://localhost:8000/predict" \
       "emotion": "Anger",
       "sentiment": "Negative",
       "political_leaning": "Right",
+      "tropes": ["Time Will Tell", "Distrust Experts"],
       "conspiracies": {
         "mentioned": ["Antivax"],
         "promoted": []

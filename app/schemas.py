@@ -34,6 +34,9 @@ class FactorResult(BaseModel):
     political_leaning: str | None = Field(
         None, description="Predicted political leaning"
     )
+    tropes: list[str] = Field(
+        default_factory=list, description="Detected narrative tropes"
+    )
     conspiracies: ConspiracyResult = Field(
         default_factory=ConspiracyResult, description="Conspiracy predictions"
     )
@@ -75,6 +78,7 @@ class ModelsInfoResponse(BaseModel):
     )
     conspiracies: list[str] = Field(..., description="List of conspiracy theories")
     conspiracy_levels: list[str] = Field(..., description="List of conspiracy levels")
+    tropes: list[str] = Field(..., description="List of narrative tropes")
 
 
 class ErrorResponse(BaseModel):
