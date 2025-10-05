@@ -8,6 +8,8 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
+from app import __version__
+
 from .config import get_settings
 from .models import BertFactorsPredictor
 from .schemas import (
@@ -74,7 +76,7 @@ app = FastAPI(
         "API for predicting emotion, sentiment, political leaning, tropes, and "
         "conspiracy factors using BERT models"
     ),
-    version="1.0.0",
+    version=__version__,
     lifespan=lifespan,
 )
 
