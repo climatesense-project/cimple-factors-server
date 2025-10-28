@@ -43,6 +43,9 @@ class FactorResult(BaseModel):
     conspiracies: ConspiracyResult = Field(
         default_factory=ConspiracyResult, description="Conspiracy predictions"
     )
+    climate_related: bool | None = Field(
+        None, description="Whether the text is climate-related"
+    )
 
 
 class PredictionResponse(BaseModel):

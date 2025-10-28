@@ -97,6 +97,7 @@ def _convert_to_factor_result(result: dict[str, Any] | None) -> FactorResult | N
             mentioned=conspiracies.get("mentioned", []),
             promoted=conspiracies.get("promoted", []),
         ),
+        climate_related=result.get("climate_related"),
     )
 
 

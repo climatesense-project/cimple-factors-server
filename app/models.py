@@ -20,6 +20,7 @@ warnings.filterwarnings(
 import torch  # noqa: E402
 import torch.nn as nn  # noqa: E402
 from transformers import (  # noqa: E402
+    AutoModelForSequenceClassification,
     AutoTokenizer,
     BertForPreTraining,
     BertForSequenceClassification,
@@ -80,6 +81,39 @@ class PersuasionBertClassifier(nn.Module):
         )
         logits: torch.Tensor = outputs.logits
         return logits
+
+
+class ClimateDetector(nn.Module):
+    """Climate relatedness detector using DistilRoBERTa."""
+
+    def __init__(self):
+        super().__init__()
+        self.model = AutoModelForSequenceClassification.from_pretrained(  # ty: ignore[possibly-unbound-attribute]
+            "climatebert/distilroberta-base-climate-detector",
+            revision="2c3bc660d45a59e31b35f5d3e365ee4f59fdf76c",
+        )
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            "climatebert/distilroberta-base-climate-detector",
+            revision="2c3bc660d45a59e31b35f5d3e365ee4f59fdf76c",
+        )
+
+    def forward(self, texts: list[str]) -> list[bool]:
+        """Predict climate relatedness for a list of texts."""
+        inputs = self.tokenizer(
+            texts,
+            return_tensors="pt",
+            truncation=True,
+            padding=True,
+            max_length=512,
+        )
+        # Move to device
+        inputs = {k: v.to(self.model.device) for k, v in inputs.items()}
+        with torch.no_grad():
+            outputs = self.model(**inputs)
+            logits = outputs.logits
+            preds = torch.argmax(logits, dim=1).tolist()
+            # Assuming 1 is climate-related, 0 is not
+            return [pred == 1 for pred in preds]
 
 
 class BertFactorsPredictor:
@@ -177,6 +211,7 @@ class BertFactorsPredictor:
                 CovidTwitterBertClassifier | None,  # conspiracy
                 CovidTwitterBertClassifier | None,  # tropes
                 PersuasionBertClassifier | None,  # persuasion techniques
+                ClimateDetector | None,  # climate detector
             ]
             | None
         ) = None
@@ -408,6 +443,15 @@ class BertFactorsPredictor:
                 logger.warning(f"Failed to load persuasion techniques model: {e}")
                 model_persuasion = None
 
+            # Climate detector model
+            model_climate: ClimateDetector | None = None
+            try:
+                model_climate = ClimateDetector().to(self.torch_device)
+                model_climate.eval()
+            except Exception as e:
+                logger.warning(f"Failed to load climate detector model: {e}")
+                model_climate = None
+
             self.models = (
                 model_em,
                 model_pol,
@@ -415,6 +459,7 @@ class BertFactorsPredictor:
                 model_con,
                 model_tropes,
                 model_persuasion,
+                model_climate,
             )
 
         except Exception as e:
@@ -479,6 +524,7 @@ class BertFactorsPredictor:
                 model_con,
                 model_tropes,
                 model_persuasion,
+                model_climate,
             ) = self.models
 
             # Initialize result lists
@@ -488,6 +534,7 @@ class BertFactorsPredictor:
             all_predictions_con = []
             all_predictions_tropes: list[list[int]] = []
             all_predictions_persuasion: list[list[int]] = []
+            all_predictions_climate: list[bool] = []
 
             # Process texts in batches
             num_batches = (len(valid_texts) + self.batch_size - 1) // self.batch_size
@@ -588,6 +635,10 @@ class BertFactorsPredictor:
                         ).tolist()
                         all_predictions_persuasion.extend(predictions_persuasion)
 
+                    if model_climate:
+                        predictions_climate = model_climate(batch_texts)
+                        all_predictions_climate.extend(predictions_climate)
+
             # Process results for each valid text
             batch_results: list[dict[str, Any]] = []
             for i in range(len(valid_texts)):
@@ -645,6 +696,9 @@ class BertFactorsPredictor:
                         if is_present == 1
                     ]
                     results["persuasion_techniques"] = detected_techniques
+
+                if all_predictions_climate:
+                    results["climate_related"] = all_predictions_climate[i]
 
                 batch_results.append(results)
 
