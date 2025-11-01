@@ -3,7 +3,6 @@
 from contextlib import asynccontextmanager
 import logging
 import time
-from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -13,13 +12,12 @@ from app import __version__
 from .config import get_settings
 from .models import BertFactorsPredictor
 from .schemas import (
-    ConspiracyResult,
     ErrorResponse,
-    FactorResult,
     HealthResponse,
     ModelsInfoResponse,
     PredictionRequest,
-    PredictionResponse,
+    SingleModelPredictionResponse,
+    SingleModelResult,
 )
 
 # Global predictor instance
@@ -81,26 +79,6 @@ app = FastAPI(
 )
 
 
-def _convert_to_factor_result(result: dict[str, Any] | None) -> FactorResult | None:
-    """Convert prediction result to FactorResult schema."""
-    if result is None:
-        return None
-
-    conspiracies = result.get("conspiracies", {})
-    return FactorResult(
-        emotion=result.get("emotion"),
-        sentiment=result.get("sentiment"),
-        political_leaning=result.get("political_leaning"),
-        tropes=result.get("tropes", []),
-        persuasion_techniques=result.get("persuasion_techniques", []),
-        conspiracies=ConspiracyResult(
-            mentioned=conspiracies.get("mentioned", []),
-            promoted=conspiracies.get("promoted", []),
-        ),
-        climate_related=result.get("climate_related"),
-    )
-
-
 @app.get("/", response_model=dict[str, str])
 async def root():
     """Root endpoint."""
@@ -135,9 +113,9 @@ async def health():
     )
 
 
-@app.post("/predict", response_model=PredictionResponse)
-async def predict(request: PredictionRequest):
-    """Predict factors for a batch of texts."""
+@app.post("/predict/{model}", response_model=SingleModelPredictionResponse)
+async def predict_single_model(model: str, request: PredictionRequest):
+    """Predict a single factor for a batch of texts."""
     global predictor
 
     if predictor is None:
@@ -145,6 +123,22 @@ async def predict(request: PredictionRequest):
 
     if not predictor.models_loaded:
         raise HTTPException(status_code=503, detail="BERT models not loaded")
+
+    # Validate model name
+    valid_models = [
+        "emotion",
+        "sentiment",
+        "political-leaning",
+        "conspiracy",
+        "tropes",
+        "persuasion-techniques",
+        "climate-related",
+    ]
+    if model not in valid_models:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid model: {model}. Must be one of {valid_models}",
+        )
 
     try:
         # Override batch size and max_length if provided
@@ -156,11 +150,11 @@ async def predict(request: PredictionRequest):
         if request.max_length is not None:
             predictor.max_length = request.max_length
 
-        logger.info(f"Processing {len(request.texts)} texts")
+        logger.info(f"Processing {len(request.texts)} texts for {model}")
         start_time = time.time()
 
         # Run prediction
-        results = predictor.predict(request.texts)
+        results = predictor.predict(model, request.texts)
 
         # Restore original settings
         predictor.batch_size = original_batch_size
@@ -170,20 +164,25 @@ async def predict(request: PredictionRequest):
         processed_count = sum(1 for r in results if r is not None)
 
         logger.info(
-            f"Processed {processed_count}/{len(request.texts)} texts in {processing_time:.2f}s"
+            f"Processed {processed_count}/{len(request.texts)} texts for {model} in {processing_time:.2f}s"
         )
 
         # Convert results to response schema
-        factor_results = [_convert_to_factor_result(result) for result in results]
+        single_results: list[SingleModelResult | None] = []
+        for result in results:
+            if result is None:
+                single_results.append(None)
+            else:
+                single_results.append(SingleModelResult(value=result.get("value")))
 
-        return PredictionResponse(
-            results=factor_results,
+        return SingleModelPredictionResponse(
+            results=single_results,
             processed_count=processed_count,
             total_count=len(request.texts),
         )
 
     except Exception as e:
-        logger.error(f"Prediction error: {e}")
+        logger.error(f"Prediction error for {model}: {e}")
         raise HTTPException(status_code=500, detail=f"Prediction failed: {e!s}") from e
 
 

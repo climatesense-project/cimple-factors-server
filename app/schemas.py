@@ -60,6 +60,26 @@ class PredictionResponse(BaseModel):
     total_count: int = Field(..., description="Total number of texts in request")
 
 
+class SingleModelResult(BaseModel):
+    """Base result for single model predictions."""
+
+    value: str | list[str] | ConspiracyResult | bool | None = Field(
+        ..., description="The prediction value"
+    )
+
+
+class SingleModelPredictionResponse(BaseModel):
+    """Response schema for single model prediction."""
+
+    results: list[SingleModelResult | None] = Field(
+        ..., description="Prediction results for each text"
+    )
+    processed_count: int = Field(
+        ..., description="Number of texts successfully processed"
+    )
+    total_count: int = Field(..., description="Total number of texts in request")
+
+
 class HealthResponse(BaseModel):
     """Health check response."""
 

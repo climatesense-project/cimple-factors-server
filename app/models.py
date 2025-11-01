@@ -484,15 +484,16 @@ class BertFactorsPredictor:
                 return False
         return True
 
-    def predict(self, texts: list[str]) -> list[dict[str, Any] | None]:
+    def predict(self, model_name: str, texts: list[str]) -> list[dict[str, Any] | None]:
         """
-        Predict factors for a list of texts using batched processing.
+        Predict a single factor for a list of texts using batched processing.
 
         Args:
+            model_name: Name of the model to use ('emotion', 'sentiment', 'political-leaning', 'conspiracy', 'tropes', 'persuasion-techniques', 'climate-related')
             texts: List of texts to analyze
 
         Returns:
-            List of predicted factors for each text
+            List of predicted results for each text, each containing 'value' and optionally 'climate_related'
         """
         if not texts:
             return []
@@ -503,6 +504,21 @@ class BertFactorsPredictor:
         if self.tokenizer is None or self.models is None:
             logger.error("Tokenizer or models not loaded")
             return [None] * len(texts)
+
+        # Validate model name
+        valid_models = [
+            "emotion",
+            "sentiment",
+            "political-leaning",
+            "conspiracy",
+            "tropes",
+            "persuasion-techniques",
+            "climate-related",
+        ]
+        if model_name not in valid_models:
+            raise ValueError(
+                f"Invalid model name: {model_name}. Must be one of {valid_models}"
+            )
 
         try:
             # Filter out empty texts
@@ -528,18 +544,33 @@ class BertFactorsPredictor:
             ) = self.models
 
             # Initialize result lists
-            all_predictions_em = []
-            all_predictions_pol = []
-            all_predictions_sent = []
-            all_predictions_con = []
-            all_predictions_tropes: list[list[int]] = []
-            all_predictions_persuasion: list[list[int]] = []
-            all_predictions_climate: list[bool] = []
+            all_predictions: list[Any] = []
+
+            # Get the specific model
+            target_model = None
+            if model_name == "emotion":
+                target_model = model_em
+            elif model_name == "political-leaning":
+                target_model = model_pol
+            elif model_name == "sentiment":
+                target_model = model_sent
+            elif model_name == "conspiracy":
+                target_model = model_con
+            elif model_name == "tropes":
+                target_model = model_tropes
+            elif model_name == "persuasion-techniques":
+                target_model = model_persuasion
+            elif model_name == "climate-related":
+                target_model = model_climate
+
+            if target_model is None:
+                logger.error(f"Model {model_name} not loaded")
+                return [None] * len(texts)
 
             # Process texts in batches
             num_batches = (len(valid_texts) + self.batch_size - 1) // self.batch_size
             logger.info(
-                f"Processing {len(valid_texts)} texts in {num_batches} batches of size {self.batch_size}"
+                f"Processing {len(valid_texts)} texts in {num_batches} batches of size {self.batch_size} for {model_name}"
             )
 
             for batch_idx in range(num_batches):
@@ -550,114 +581,82 @@ class BertFactorsPredictor:
                 if batch_idx % 10 == 0:
                     logger.info(f"Processing batch {batch_idx + 1}/{num_batches}")
 
-                # Batch tokenization
-                tokenized_batch = self.tokenizer(
-                    batch_texts,
-                    max_length=self.max_length,
-                    padding="max_length",
-                    truncation=True,
-                    return_tensors="pt",
-                )
+                # For climate model, use its own tokenizer and forward method
+                if model_name == "climate-related":
+                    predictions = target_model(batch_texts)
+                    all_predictions.extend(predictions)
+                else:
+                    # Batch tokenization for BERT models
+                    tokenized_batch = self.tokenizer(
+                        batch_texts,
+                        max_length=self.max_length,
+                        padding="max_length",
+                        truncation=True,
+                        return_tensors="pt",
+                    )
 
-                input_ids = tokenized_batch["input_ids"].to(self.torch_device)
-                token_type_ids = tokenized_batch["token_type_ids"].to(self.torch_device)
-                attention_mask = tokenized_batch["attention_mask"].to(self.torch_device)
+                    input_ids = tokenized_batch["input_ids"].to(self.torch_device)
+                    token_type_ids = tokenized_batch["token_type_ids"].to(
+                        self.torch_device
+                    )
+                    attention_mask = tokenized_batch["attention_mask"].to(
+                        self.torch_device
+                    )
 
-                with torch.no_grad():
-                    # Batch predictions for this batch
-                    if model_em:
-                        logits_em_batch = model_em(
-                            input_ids, token_type_ids, attention_mask
-                        )
-                        predictions_em = (
-                            logits_em_batch.detach().cpu().numpy().argmax(axis=1)
-                        )
-                        all_predictions_em.extend(predictions_em)
+                    with torch.no_grad():
+                        # Batch predictions for this batch
+                        if model_name in ["emotion", "political-leaning", "sentiment"]:
+                            logits_batch = target_model(
+                                input_ids, token_type_ids, attention_mask
+                            )
+                            predictions = (
+                                logits_batch.detach().cpu().numpy().argmax(axis=1)
+                            )
+                            all_predictions.extend(predictions)
 
-                    if model_pol:
-                        logits_pol_batch = model_pol(
-                            input_ids, token_type_ids, attention_mask
-                        )
-                        predictions_pol = (
-                            logits_pol_batch.detach().cpu().numpy().argmax(axis=1)
-                        )
-                        all_predictions_pol.extend(predictions_pol)
+                        elif model_name == "conspiracy":
+                            logits_batch = target_model(
+                                input_ids, token_type_ids, attention_mask
+                            )
 
-                    if model_sent:
-                        logits_sent_batch = model_sent(
-                            input_ids, token_type_ids, attention_mask
-                        )
-                        predictions_sent = (
-                            logits_sent_batch.detach().cpu().numpy().argmax(axis=1)
-                        )
-                        all_predictions_sent.extend(predictions_sent)
+                            num_conspiracies = len(self.CONSPIRACIES_LIST)
+                            num_levels = len(self.CONSPIRACY_LEVELS_LIST)
 
-                    if model_con:
-                        logits_con_batch = model_con(
-                            input_ids, token_type_ids, attention_mask
-                        )
+                            predictions_reshaped = (
+                                logits_batch.detach()
+                                .cpu()
+                                .numpy()
+                                .reshape(-1, num_conspiracies, num_levels)
+                            )
+                            predictions = predictions_reshaped.argmax(axis=2)
+                            all_predictions.extend(predictions)
 
-                        num_conspiracies = len(self.CONSPIRACIES_LIST)
-                        num_levels = len(self.CONSPIRACY_LEVELS_LIST)
-
-                        predictions_con_reshaped = (
-                            logits_con_batch.detach()
-                            .cpu()
-                            .numpy()
-                            .reshape(-1, num_conspiracies, num_levels)
-                        )
-                        predictions_con = predictions_con_reshaped.argmax(axis=2)
-                        all_predictions_con.extend(predictions_con)
-
-                    if model_tropes:
-                        logits_tropes_batch = model_tropes(
-                            input_ids, token_type_ids, attention_mask
-                        )
-                        num_tropes = len(self.TROPES_LIST)
-                        logits_tropes = (
-                            logits_tropes_batch.detach().cpu().view(-1, num_tropes, 2)
-                        )
-                        predictions_tropes = logits_tropes.argmax(dim=2).tolist()
-                        all_predictions_tropes.extend(predictions_tropes)
-
-                    if model_persuasion:
-                        logits_persuasion_batch = model_persuasion(
-                            input_ids, token_type_ids, attention_mask
-                        )
-                        num_techniques = len(self.PERSUASION_TECHNIQUES_LIST)
-                        logits_persuasion = (
-                            logits_persuasion_batch.detach()
-                            .cpu()
-                            .view(-1, num_techniques, 2)
-                        )
-                        predictions_persuasion = logits_persuasion.argmax(
-                            dim=2
-                        ).tolist()
-                        all_predictions_persuasion.extend(predictions_persuasion)
-
-                    if model_climate:
-                        predictions_climate = model_climate(batch_texts)
-                        all_predictions_climate.extend(predictions_climate)
+                        elif model_name in ["tropes", "persuasion-techniques"]:
+                            logits_batch = target_model(
+                                input_ids, token_type_ids, attention_mask
+                            )
+                            if model_name == "tropes":
+                                num_items = len(self.TROPES_LIST)
+                            else:  # persuasion-techniques
+                                num_items = len(self.PERSUASION_TECHNIQUES_LIST)
+                            logits = logits_batch.detach().cpu().view(-1, num_items, 2)
+                            predictions = logits.argmax(dim=2).tolist()
+                            all_predictions.extend(predictions)
 
             # Process results for each valid text
             batch_results: list[dict[str, Any]] = []
             for i in range(len(valid_texts)):
-                results: dict[str, Any] = {}
+                result: dict[str, Any] = {}
 
-                if all_predictions_em:
-                    emotion = self.EMOTIONS_LIST[all_predictions_em[i]]
-                    results["emotion"] = emotion if emotion != "None" else None
-
-                if all_predictions_pol:
-                    results["political_leaning"] = self.POLITICAL_BIAS_LIST[
-                        all_predictions_pol[i]
-                    ]
-
-                if all_predictions_sent:
-                    results["sentiment"] = self.SENTIMENTS_LIST[all_predictions_sent[i]]
-
-                if all_predictions_con:
-                    conspiracy_indices = all_predictions_con[i]
+                if model_name == "emotion":
+                    emotion = self.EMOTIONS_LIST[all_predictions[i]]
+                    result["value"] = emotion if emotion != "None" else None
+                elif model_name == "political-leaning":
+                    result["value"] = self.POLITICAL_BIAS_LIST[all_predictions[i]]
+                elif model_name == "sentiment":
+                    result["value"] = self.SENTIMENTS_LIST[all_predictions[i]]
+                elif model_name == "conspiracy":
+                    conspiracy_indices = all_predictions[i]
                     mentioned = []
                     promoted = []
 
@@ -668,13 +667,12 @@ class BertFactorsPredictor:
                         elif level_idx == 2:
                             promoted.append(conspiracy_name)
 
-                    results["conspiracies"] = {
+                    result["value"] = {
                         "mentioned": mentioned,
                         "promoted": promoted,
                     }
-
-                if all_predictions_tropes:
-                    tropes_flags = all_predictions_tropes[i]
+                elif model_name == "tropes":
+                    tropes_flags = all_predictions[i]
                     detected_tropes = [
                         trope
                         for trope, is_present in zip(
@@ -682,10 +680,9 @@ class BertFactorsPredictor:
                         )
                         if is_present == 1
                     ]
-                    results["tropes"] = detected_tropes
-
-                if all_predictions_persuasion:
-                    technique_flags = all_predictions_persuasion[i]
+                    result["value"] = detected_tropes
+                elif model_name == "persuasion-techniques":
+                    technique_flags = all_predictions[i]
                     detected_techniques = [
                         technique
                         for technique, is_present in zip(
@@ -695,12 +692,11 @@ class BertFactorsPredictor:
                         )
                         if is_present == 1
                     ]
-                    results["persuasion_techniques"] = detected_techniques
+                    result["value"] = detected_techniques
+                elif model_name == "climate-related":
+                    result["value"] = all_predictions[i]
 
-                if all_predictions_climate:
-                    results["climate_related"] = all_predictions_climate[i]
-
-                batch_results.append(results)
+                batch_results.append(result)
 
             # Map results back to original indices
             final_results: list[dict[str, Any] | None] = [None] * len(texts)
@@ -710,5 +706,5 @@ class BertFactorsPredictor:
             return final_results
 
         except Exception as e:
-            logger.error(f"Error in CIMPLE factors prediction: {e}")
+            logger.error(f"Error in {model_name} prediction: {e}")
             return [None] * len(texts)
