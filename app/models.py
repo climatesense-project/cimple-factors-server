@@ -4,9 +4,11 @@
 import logging
 from pathlib import Path
 from typing import Any
+import urllib.request
 import warnings
 
 import requests
+import safetensors.torch
 from tqdm import tqdm
 
 # Suppress specific huggingface-hub deprecation warning
@@ -17,6 +19,7 @@ warnings.filterwarnings(
     module="huggingface_hub",
 )
 
+from huggingface_hub import PyTorchModelHubMixin  # noqa: E402
 import torch  # noqa: E402
 import torch.nn as nn  # noqa: E402
 from transformers import (  # noqa: E402
@@ -24,6 +27,7 @@ from transformers import (  # noqa: E402
     AutoTokenizer,
     BertForPreTraining,
     BertForSequenceClassification,
+    T5EncoderModel,
 )
 
 logger = logging.getLogger(__name__)
@@ -116,6 +120,122 @@ class ClimateDetector(nn.Module):
             return [pred == 1 for pred in preds]
 
 
+class FrugalAIStanceClassifier(nn.Module):
+    """Frugal AI Challenge stance classifier: sentence-t5-large encoder + linear MLP.
+
+    Replicates the sentence-transformers/sentence-t5-large pipeline (T5 encoder
+    -> mean pooling -> Dense 1024->768 -> L2 normalization) followed by the
+    768->100->100->100->50->8 MLP, matching the EURECOM Frugal AI Challenge
+    submission. The Dense projection weights are pulled from the hub checkpoint
+    directly; the MLP checkpoint is a PytorchModelHubMixin artifact whose
+    config only records num_classes.
+    """
+
+    STANCE_LABELS = [
+        "0_not_relevant",
+        "1_not_happening",
+        "2_not_human",
+        "3_not_bad",
+        "4_solutions_harmful_unnecessary",
+        "5_science_is_unreliable",
+        "6_proponents_biased",
+        "7_fossil_fuels_needed",
+    ]
+
+    def __init__(self, device: torch.device | None = None):
+        super().__init__()
+        self.device_ref = device
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            "sentence-transformers/sentence-t5-large",
+            revision="1b36eb48a1df42a07ffd02234d25abfbf3e3f3cb",
+        )
+        self.encoder = T5EncoderModel.from_pretrained(  # ty: ignore[possibly-unbound-attribute]
+            "sentence-transformers/sentence-t5-large",
+            revision="1b36eb48a1df42a07ffd02234d25abfbf3e3f3cb",
+        )
+        self.dense = nn.Linear(1024, 768, bias=False)
+        self.dense.weight.data = self._load_dense_weight()
+        self.mlp = FrugalAIStanceClassifier._build_mlp()
+        if device is not None:
+            self.to(device)
+        self.eval()
+
+    @staticmethod
+    def _load_dense_weight() -> torch.Tensor:
+        url = "https://huggingface.co/sentence-transformers/sentence-t5-large/resolve/main/2_Dense/model.safetensors"
+        with urllib.request.urlopen(url, timeout=60) as response:  # noqa: S310
+            data = response.read()
+        dense_sd = safetensors.torch.load(data)  # nosec: B614 - safetensors format, not pickle
+        return dense_sd["linear.weight"]
+
+    @staticmethod
+    def _build_mlp() -> "FrugalAIMLP":
+        return FrugalAIMLP.from_pretrained(
+            "ypesk/frugal-ai-EURECOM-mlp-768-fullset",
+            revision="66b64b758d9ae07393ecfa82689c52f5b3a81841",
+        )
+
+    def forward(
+        self,
+        input_ids: torch.Tensor,
+        attention_mask: torch.Tensor,
+    ) -> torch.Tensor:
+        out = self.encoder(input_ids=input_ids, attention_mask=attention_mask)
+        mask = attention_mask.unsqueeze(-1).to(out.last_hidden_state.dtype)
+        emb = (out.last_hidden_state * mask).sum(dim=1) / mask.sum(dim=1).clamp(
+            min=1e-9
+        )
+        emb = self.dense(emb)
+        emb = torch.nn.functional.normalize(emb, p=2, dim=1)
+        return self.mlp(emb)
+
+    def predict_texts(
+        self,
+        texts: list[str],
+        batch_size: int = 8,
+        max_length: int = 256,
+    ) -> list[str]:
+        """Predict stance labels for a list of texts, batched."""
+        results: list[str] = []
+        for start in range(0, len(texts), batch_size):
+            batch = texts[start : start + batch_size]
+            inputs = self.tokenizer(
+                batch,
+                return_tensors="pt",
+                padding=True,
+                truncation=True,
+                max_length=max_length,
+            )
+            inputs = {
+                k: v.to(next(self.parameters()).device) for k, v in inputs.items()
+            }
+            with torch.no_grad():
+                logits = self(**inputs)
+                preds = torch.argmax(logits, dim=1).tolist()
+            results.extend(self.STANCE_LABELS[p] for p in preds)
+        return results
+
+
+class FrugalAIMLP(nn.Module, PyTorchModelHubMixin):
+    """MLP head of the Frugal AI stance classifier."""
+
+    def __init__(self, num_classes: int = 8):
+        super().__init__()
+        self.h1 = nn.Linear(768, 100)
+        self.h2 = nn.Linear(100, 100)
+        self.h3 = nn.Linear(100, 100)
+        self.h4 = nn.Linear(100, 50)
+        self.h5 = nn.Linear(50, num_classes)
+        self.dropout = nn.Dropout(0.2)
+        self.activation = nn.ReLU()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        for h in (self.h1, self.h2, self.h3, self.h4):
+            x = self.activation(h(x))
+            x = self.dropout(x)
+        return self.h5(x)
+
+
 class BertFactorsPredictor:
     """BERT-based factors predictor for emotion, sentiment, political leaning, tropes, conspiracies, and persuasion techniques."""
 
@@ -195,12 +315,16 @@ class BertFactorsPredictor:
         batch_size: int = 32,
         max_length: int = 128,
         auto_download: bool = True,
+        frugal_batch_size: int = 8,
+        frugal_max_length: int = 256,
     ):
         self.models_path = Path(models_path)
         self.batch_size = batch_size
         self.max_length = max_length
         self.device = device
         self.auto_download = auto_download
+        self.frugal_batch_size = frugal_batch_size
+        self.frugal_max_length = frugal_max_length
 
         self.tokenizer: AutoTokenizer | None = None
         self.models: (
@@ -212,6 +336,7 @@ class BertFactorsPredictor:
                 CovidTwitterBertClassifier | None,  # tropes
                 PersuasionBertClassifier | None,  # persuasion techniques
                 ClimateDetector | None,  # climate detector
+                FrugalAIStanceClassifier | None,  # frugal ai stance
             ]
             | None
         ) = None
@@ -452,6 +577,14 @@ class BertFactorsPredictor:
                 logger.warning(f"Failed to load climate detector model: {e}")
                 model_climate = None
 
+            # Frugal AI stance model
+            model_frugal: FrugalAIStanceClassifier | None = None
+            try:
+                model_frugal = FrugalAIStanceClassifier(device=self.torch_device)
+            except Exception as e:
+                logger.warning(f"Failed to load frugal ai stance model: {e}")
+                model_frugal = None
+
             self.models = (
                 model_em,
                 model_pol,
@@ -460,6 +593,7 @@ class BertFactorsPredictor:
                 model_tropes,
                 model_persuasion,
                 model_climate,
+                model_frugal,
             )
 
         except Exception as e:
@@ -516,6 +650,7 @@ class BertFactorsPredictor:
             "tropes",
             "persuasion-techniques",
             "climate-related",
+            "frugal-ai-stance",
         ]
         if model_name not in valid_models:
             raise ValueError(
@@ -543,6 +678,7 @@ class BertFactorsPredictor:
                 model_tropes,
                 model_persuasion,
                 model_climate,
+                model_frugal,
             ) = self.models
 
             # Initialize result lists
@@ -564,6 +700,8 @@ class BertFactorsPredictor:
                 target_model = model_persuasion
             elif model_name == "climate-related":
                 target_model = model_climate
+            elif model_name == "frugal-ai-stance":
+                target_model = model_frugal
 
             if target_model is None:
                 logger.error(f"Model {model_name} not loaded")
@@ -587,6 +725,13 @@ class BertFactorsPredictor:
                 if model_name == "climate-related":
                     predictions = target_model(batch_texts)
                     all_predictions.extend(predictions)
+                elif model_name == "frugal-ai-stance":
+                    batch_labels = target_model.predict_texts(
+                        batch_texts,
+                        batch_size=self.frugal_batch_size,
+                        max_length=self.frugal_max_length,
+                    )
+                    all_predictions.extend(batch_labels)
                 else:
                     # Batch tokenization for BERT models
                     tokenized_batch = self.tokenizer(
@@ -696,6 +841,8 @@ class BertFactorsPredictor:
                     ]
                     result["value"] = detected_techniques
                 elif model_name == "climate-related":
+                    result["value"] = all_predictions[i]
+                elif model_name == "frugal-ai-stance":
                     result["value"] = all_predictions[i]
 
                 batch_results.append(result)

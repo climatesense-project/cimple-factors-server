@@ -23,6 +23,15 @@ class Settings(BaseModel):
     max_length: int = Field(
         default=128, description="Default maximum sequence length", ge=1, le=512
     )
+    frugal_batch_size: int = Field(
+        default=8, description="Batch size for the frugal-ai-stance model", ge=1, le=128
+    )
+    frugal_max_length: int = Field(
+        default=256,
+        description="Maximum sequence length for the frugal-ai-stance model",
+        ge=1,
+        le=512,
+    )
     auto_download: bool = Field(
         default=True, description="Whether to automatically download missing models"
     )
@@ -46,6 +55,8 @@ def get_settings() -> Settings:
         device=os.getenv("BERT_DEVICE", "auto"),
         batch_size=int(os.getenv("BERT_BATCH_SIZE", "32")),
         max_length=int(os.getenv("BERT_MAX_LENGTH", "128")),
+        frugal_batch_size=int(os.getenv("BERT_FRUGAL_BATCH_SIZE", "8")),
+        frugal_max_length=int(os.getenv("BERT_FRUGAL_MAX_LENGTH", "256")),
         auto_download=os.getenv("BERT_AUTO_DOWNLOAD", "true").lower() == "true",
         host=os.getenv("BERT_HOST", "127.0.0.1"),
         port=int(os.getenv("BERT_PORT", "8000")),

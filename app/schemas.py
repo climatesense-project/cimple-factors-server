@@ -108,6 +108,9 @@ class ModelsInfoResponse(BaseModel):
     persuasion_techniques: list[str] = Field(
         ..., description="List of persuasion techniques"
     )
+    stance_labels: list[str] = Field(
+        ..., description="List of frugal-ai-stance class labels"
+    )
 
 
 class ErrorResponse(BaseModel):

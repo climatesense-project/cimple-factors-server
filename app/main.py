@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from app import __version__
 
 from .config import get_settings
-from .models import BertFactorsPredictor
+from .models import BertFactorsPredictor, FrugalAIStanceClassifier
 from .schemas import (
     ErrorResponse,
     HealthResponse,
@@ -50,6 +50,8 @@ async def lifespan(app: FastAPI):
             batch_size=settings.batch_size,
             max_length=settings.max_length,
             auto_download=settings.auto_download,
+            frugal_batch_size=settings.frugal_batch_size,
+            frugal_max_length=settings.frugal_max_length,
         )
 
         # Initialize models in background
@@ -133,6 +135,7 @@ async def predict_single_model(model: str, request: PredictionRequest):
         "tropes",
         "persuasion-techniques",
         "climate-related",
+        "frugal-ai-stance",
     ]
     if model not in valid_models:
         raise HTTPException(
@@ -144,11 +147,19 @@ async def predict_single_model(model: str, request: PredictionRequest):
         # Override batch size and max_length if provided
         original_batch_size = predictor.batch_size
         original_max_length = predictor.max_length
+        original_frugal_batch_size = predictor.frugal_batch_size
+        original_frugal_max_length = predictor.frugal_max_length
 
         if request.batch_size is not None:
-            predictor.batch_size = request.batch_size
+            if model == "frugal-ai-stance":
+                predictor.frugal_batch_size = request.batch_size
+            else:
+                predictor.batch_size = request.batch_size
         if request.max_length is not None:
-            predictor.max_length = request.max_length
+            if model == "frugal-ai-stance":
+                predictor.frugal_max_length = request.max_length
+            else:
+                predictor.max_length = request.max_length
 
         logger.info(f"Processing {len(request.texts)} texts for {model}")
         start_time = time.time()
@@ -159,6 +170,8 @@ async def predict_single_model(model: str, request: PredictionRequest):
         # Restore original settings
         predictor.batch_size = original_batch_size
         predictor.max_length = original_max_length
+        predictor.frugal_batch_size = original_frugal_batch_size
+        predictor.frugal_max_length = original_frugal_max_length
 
         processing_time = time.time() - start_time
         processed_count = sum(1 for r in results if r is not None)
@@ -210,6 +223,7 @@ async def models_info():
         conspiracy_levels=predictor.CONSPIRACY_LEVELS_LIST,
         tropes=predictor.TROPES_LIST,
         persuasion_techniques=predictor.PERSUASION_TECHNIQUES_LIST,
+        stance_labels=FrugalAIStanceClassifier.STANCE_LABELS,
     )
 
 
