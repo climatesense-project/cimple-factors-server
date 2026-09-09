@@ -466,6 +466,8 @@ class BertFactorsPredictor:
             logger.error(f"Error loading BERT models: {e}")
             self.models = None
             self.tokenizer = None
+        finally:
+            torch.cuda.empty_cache()
 
     def initialize(self) -> None:
         """Initialize the predictor by loading models."""
