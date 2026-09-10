@@ -23,6 +23,7 @@ services:
       - BERT_BATCH_SIZE=${BERT_BATCH_SIZE:-32}
       - BERT_MAX_LENGTH=${BERT_MAX_LENGTH:-128}
       - BERT_LOG_LEVEL=${BERT_LOG_LEVEL:-INFO}
+      - BERT_API_KEY=${BERT_API_KEY:-}
       - PYTHONUNBUFFERED=1
     volumes:
       - ${MODELS_PATH:-./models}:/app/models

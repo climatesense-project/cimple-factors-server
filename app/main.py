@@ -1,10 +1,11 @@
 """FastAPI application for CIMPLE factors prediction."""
 
 from contextlib import asynccontextmanager
+import hmac
 import logging
 import time
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from app import __version__
@@ -30,6 +31,15 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+
+def require_api_key(x_api_key: str | None = Header(default=None)) -> None:
+    """Require X-API-Key to match BERT_API_KEY when one is configured."""
+    expected = settings.api_key
+    if expected is None:
+        return
+    if x_api_key is None or not hmac.compare_digest(x_api_key, expected):
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 
 @asynccontextmanager
@@ -78,6 +88,7 @@ app = FastAPI(
     ),
     version=__version__,
     lifespan=lifespan,
+    dependencies=[Depends(require_api_key)],
 )
 
 

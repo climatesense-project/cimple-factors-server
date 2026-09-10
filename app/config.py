@@ -36,6 +36,12 @@ class Settings(BaseModel):
         default=True, description="Whether to automatically download missing models"
     )
 
+    # API security
+    api_key: str | None = Field(
+        default=None,
+        description="API key required in the X-API-Key header; None disables protection",
+    )
+
     # Server configuration
     host: str = Field(default="127.0.0.1", description="Server host")
     port: int = Field(default=8000, description="Server port", ge=1, le=65535)
@@ -58,6 +64,7 @@ def get_settings() -> Settings:
         frugal_batch_size=int(os.getenv("BERT_FRUGAL_BATCH_SIZE", "8")),
         frugal_max_length=int(os.getenv("BERT_FRUGAL_MAX_LENGTH", "256")),
         auto_download=os.getenv("BERT_AUTO_DOWNLOAD", "true").lower() == "true",
+        api_key=os.getenv("BERT_API_KEY") or None,
         host=os.getenv("BERT_HOST", "127.0.0.1"),
         port=int(os.getenv("BERT_PORT", "8000")),
         workers=int(os.getenv("BERT_WORKERS", "1")),
