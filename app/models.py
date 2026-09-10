@@ -299,6 +299,16 @@ class BertFactorsPredictor:
 
     # Model download configuration
     MODELS_BASE_URL = "https://data.climatesense-project.eu/models"
+    VALID_MODELS = [
+        "emotion",
+        "sentiment",
+        "political-leaning",
+        "conspiracy",
+        "tropes",
+        "persuasion-techniques",
+        "climate-related",
+        "frugal-ai-stance",
+    ]
     REQUIRED_MODELS = [
         "emotion.pth",
         "sentiment.pth",
@@ -642,19 +652,9 @@ class BertFactorsPredictor:
             return [None] * len(texts)
 
         # Validate model name
-        valid_models = [
-            "emotion",
-            "sentiment",
-            "political-leaning",
-            "conspiracy",
-            "tropes",
-            "persuasion-techniques",
-            "climate-related",
-            "frugal-ai-stance",
-        ]
-        if model_name not in valid_models:
+        if model_name not in self.VALID_MODELS:
             raise ValueError(
-                f"Invalid model name: {model_name}. Must be one of {valid_models}"
+                f"Invalid model name: {model_name}. Must be one of {self.VALID_MODELS}"
             )
 
         try:

@@ -127,20 +127,10 @@ async def predict_single_model(model: str, request: PredictionRequest):
         raise HTTPException(status_code=503, detail="BERT models not loaded")
 
     # Validate model name
-    valid_models = [
-        "emotion",
-        "sentiment",
-        "political-leaning",
-        "conspiracy",
-        "tropes",
-        "persuasion-techniques",
-        "climate-related",
-        "frugal-ai-stance",
-    ]
-    if model not in valid_models:
+    if model not in BertFactorsPredictor.VALID_MODELS:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid model: {model}. Must be one of {valid_models}",
+            detail=f"Invalid model: {model}. Must be one of {BertFactorsPredictor.VALID_MODELS}",
         )
 
     try:
@@ -224,6 +214,7 @@ async def models_info():
         tropes=predictor.TROPES_LIST,
         persuasion_techniques=predictor.PERSUASION_TECHNIQUES_LIST,
         stance_labels=FrugalAIStanceClassifier.STANCE_LABELS,
+        models=predictor.VALID_MODELS,
     )
 
 

@@ -111,6 +111,9 @@ class ModelsInfoResponse(BaseModel):
     stance_labels: list[str] = Field(
         ..., description="List of frugal-ai-stance class labels"
     )
+    models: list[str] = Field(
+        ..., description="Valid model names for the /predict/{model} endpoint"
+    )
 
 
 class ErrorResponse(BaseModel):
