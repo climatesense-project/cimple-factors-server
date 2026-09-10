@@ -1,6 +1,6 @@
 # CIMPLE Factors Server
 
-A standalone HTTP API server for predicting emotion, sentiment, political leaning, narrative tropes, conspiracy factors, and persuasion techniques using BERT models.
+A standalone HTTP API server for predicting emotion, sentiment, political leaning, narrative tropes, conspiracy factors, persuasion techniques, climate relatedness, and climate stance using BERT and T5-based models.
 
 ## 📋 Prerequisites
 
@@ -18,7 +18,7 @@ A standalone HTTP API server for predicting emotion, sentiment, political leanin
 ```bash
 git clone https://github.com/climatesense-project/cimple-factors-server.git
 cd cimple-factors-server/
-docker-compose up --build
+docker compose up --build
 ```
 
 2. **Access the API**:
@@ -42,53 +42,38 @@ just run
 
 ## API Usage
 
-### Predict Factors
+All model predictions are served through a single endpoint, `/predict/{model}`, where `{model}` is one of the servable models listed by `GET /models` (also returned in the `models` field of the `/models` response):
+
+| Model                   | Output                                                    |
+| ----------------------- | --------------------------------------------------------- |
+| `emotion`               | Emotion label (Happiness, Anger, Sadness, Fear) or `null` |
+| `sentiment`             | Negative / Neutral / Positive                             |
+| `political-leaning`     | Left / Other / Right                                      |
+| `conspiracy`            | Mentioned and promoted conspiracy theories                |
+| `tropes`                | Detected narrative tropes                                 |
+| `persuasion-techniques` | Detected persuasion techniques                            |
+| `climate-related`       | Whether the text is climate-related                       |
+| `frugal-ai-stance`      | Climate stance class                                      |
+
+### Predict a Factor
 
 ```bash
-curl -X POST "http://localhost:8000/predict" \
+curl -X POST "http://localhost:8000/predict/emotion" \
      -H "Content-Type: application/json" \
-     -d '{
-       "texts": [
-         "Climate change is a serious threat to our planet.",
-         "I think the government is hiding the truth about vaccines."
-       ],
-       "batch_size": 32,
-       "max_length": 128
-     }'
+     -d '{"texts": ["Climate change is a serious threat to our planet."]}'
 ```
 
 **Response**:
 
 ```json
 {
-  "results": [
-    {
-      "emotion": "Fear",
-      "sentiment": "Negative",
-      "political_leaning": "Left",
-      "tropes": ["Hidden Motives"],
-      "persuasion_techniques": ["Reasoning", "Repetition"],
-      "conspiracies": {
-        "mentioned": [],
-        "promoted": []
-      }
-    },
-    {
-      "emotion": "Anger",
-      "sentiment": "Negative",
-      "political_leaning": "Right",
-      "tropes": ["Time Will Tell", "Distrust Experts"],
-      "persuasion_techniques": ["Appeal to authority"],
-      "conspiracies": {
-        "mentioned": ["Antivax"],
-        "promoted": []
-      }
-    }
-  ],
-  "processed_count": 2,
-  "total_count": 2
+  "results": [{ "value": "Fear" }],
+  "processed_count": 1,
+  "total_count": 1
 }
 ```
+
+`batch_size` and `max_length` can be passed in the payload to override the defaults for that request.
 
 ### Health Check
 
@@ -106,16 +91,18 @@ curl http://localhost:8000/models
 
 Configure the server using environment variables (set in a `.env` file or directly in the environment):
 
-| Variable             | Description                    | Default   |
-| -------------------- | ------------------------------ | --------- |
-| `BERT_MODELS_PATH`   | Path to model files            | `models`  |
-| `BERT_DEVICE`        | PyTorch device (auto/cpu/cuda) | `auto`    |
-| `BERT_BATCH_SIZE`    | Default batch size             | `32`      |
-| `BERT_MAX_LENGTH`    | Default max sequence length    | `128`     |
-| `BERT_AUTO_DOWNLOAD` | Auto-download missing models   | `true`    |
-| `BERT_HOST`          | Server host                    | `0.0.0.0` |
-| `BERT_PORT`          | Server port                    | `8000`    |
-| `BERT_LOG_LEVEL`     | Logging level                  | `INFO`    |
+| Variable                 | Description                                | Default   |
+| ------------------------ | ------------------------------------------ | --------- |
+| `BERT_MODELS_PATH`       | Path to model files                        | `models`  |
+| `BERT_DEVICE`            | PyTorch device (auto/cpu/cuda)             | `auto`    |
+| `BERT_BATCH_SIZE`        | Default batch size                         | `32`      |
+| `BERT_MAX_LENGTH`        | Default max sequence length                | `128`     |
+| `BERT_FRUGAL_BATCH_SIZE` | Batch size for `frugal-ai-stance`          | `8`       |
+| `BERT_FRUGAL_MAX_LENGTH` | Max sequence length for `frugal-ai-stance` | `256`     |
+| `BERT_AUTO_DOWNLOAD`     | Auto-download missing models               | `true`    |
+| `BERT_HOST`              | Server host                                | `0.0.0.0` |
+| `BERT_PORT`              | Server port                                | `8000`    |
+| `BERT_LOG_LEVEL`         | Logging level                              | `INFO`    |
 
 The server expects the following model checkpoints under `BERT_MODELS_PATH` (downloading automatically when `BERT_AUTO_DOWNLOAD=true`):
 
@@ -125,6 +112,8 @@ The server expects the following model checkpoints under `BERT_MODELS_PATH` (dow
 - `conspiracy.pth`
 - `tropes.pth`
 - `persuasion-techniques.pth`
+
+The `frugal-ai-stance` model is fetched directly from Hugging Face.
 
 ### Device Selection
 
