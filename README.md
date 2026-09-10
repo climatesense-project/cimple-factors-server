@@ -87,22 +87,33 @@ curl http://localhost:8000/health
 curl http://localhost:8000/models
 ```
 
+## Authentication
+
+The API can be protected with a shared API key. Set `BERT_API_KEY` and every request must carry a matching `X-API-Key` header:
+
+```bash
+curl http://localhost:8000/health -H "X-API-Key: <your-key>"
+```
+
+When `BERT_API_KEY` is unset (or empty), the API is open.
+
 ## Configuration
 
 Configure the server using environment variables (set in a `.env` file or directly in the environment):
 
-| Variable                 | Description                                | Default   |
-| ------------------------ | ------------------------------------------ | --------- |
-| `BERT_MODELS_PATH`       | Path to model files                        | `models`  |
-| `BERT_DEVICE`            | PyTorch device (auto/cpu/cuda)             | `auto`    |
-| `BERT_BATCH_SIZE`        | Default batch size                         | `32`      |
-| `BERT_MAX_LENGTH`        | Default max sequence length                | `128`     |
-| `BERT_FRUGAL_BATCH_SIZE` | Batch size for `frugal-ai-stance`          | `8`       |
-| `BERT_FRUGAL_MAX_LENGTH` | Max sequence length for `frugal-ai-stance` | `256`     |
-| `BERT_AUTO_DOWNLOAD`     | Auto-download missing models               | `true`    |
-| `BERT_HOST`              | Server host                                | `0.0.0.0` |
-| `BERT_PORT`              | Server port                                | `8000`    |
-| `BERT_LOG_LEVEL`         | Logging level                              | `INFO`    |
+| Variable                 | Description                                     | Default   |
+| ------------------------ | ----------------------------------------------- | --------- |
+| `BERT_MODELS_PATH`       | Path to model files                             | `models`  |
+| `BERT_DEVICE`            | PyTorch device (auto/cpu/cuda)                  | `auto`    |
+| `BERT_BATCH_SIZE`        | Default batch size                              | `32`      |
+| `BERT_MAX_LENGTH`        | Default max sequence length                     | `128`     |
+| `BERT_FRUGAL_BATCH_SIZE` | Batch size for `frugal-ai-stance`               | `8`       |
+| `BERT_FRUGAL_MAX_LENGTH` | Max sequence length for `frugal-ai-stance`      | `256`     |
+| `BERT_AUTO_DOWNLOAD`     | Auto-download missing models                    | `true`    |
+| `BERT_API_KEY`           | Required `X-API-Key` value; empty disables auth | _(none)_  |
+| `BERT_HOST`              | Server host                                     | `0.0.0.0` |
+| `BERT_PORT`              | Server port                                     | `8000`    |
+| `BERT_LOG_LEVEL`         | Logging level                                   | `INFO`    |
 
 The server expects the following model checkpoints under `BERT_MODELS_PATH` (downloading automatically when `BERT_AUTO_DOWNLOAD=true`):
 
